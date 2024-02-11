@@ -127,8 +127,8 @@ options.add_argument('--incognito') # Incognito mode for better results
 options.add_argument('--headless') # The page will not show, better for Docker & virtual machines
 options.add_argument('--disable-gpu') 
 options.add_argument('--lang=fr-FR')
-options.add_argument('--no-sandbox') 
-options.add_argument('--disable-dev-shm-usage') 
+options.add_argument('--no-sandbox') # Important for Docker usage
+options.add_argument('--disable-dev-shm-usage') # Important for Docker usage
 options.add_argument('--disable-features=MediaSessionService')
 options.add_argument('--disable-features=VizDisplayCompositor')
 driver = webdriver.Chrome(options=options)
@@ -226,7 +226,8 @@ for job_search in jobs_list:
                 
                 # Sometimes the company is empty
                 try: 
-                    company = i.select_one('.base-search-card__info h4.base-search-card__subtitle a.hidden-nested-link').text.strip()
+                    company = i.select_one('.base-search-card__info h4.base-search-card__subtitle a.hidden-nested-link')\
+                        .text.strip()
                 except:
                     company = 'Not found'
                     
