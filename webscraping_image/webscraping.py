@@ -117,7 +117,7 @@ def aws_bucket_upload(filename,
             )
         
     except Exception as e:
-        print(e)
+        print("Failed to upload file on S3 :", e)
         
 
 # Selenium options
@@ -127,8 +127,8 @@ options.add_argument('--incognito') # Incognito mode for better results
 options.add_argument('--headless') # The page will not show, better for Docker & virtual machines
 options.add_argument('--disable-gpu') 
 options.add_argument('--lang=fr-FR')
-options.add_argument('--no-sandbox') #
-options.add_argument('--disable-dev-shm-usage') #
+options.add_argument('--no-sandbox') 
+options.add_argument('--disable-dev-shm-usage') 
 options.add_argument('--disable-features=MediaSessionService')
 options.add_argument('--disable-features=VizDisplayCompositor')
 driver = webdriver.Chrome(options=options)
@@ -142,62 +142,122 @@ for job_search in jobs_list:
     scrap_data = JobsFinder(job_search)
 
     # Url to scrap
-    url = f"https://www.linkedin.com/jobs/search/?currentJobId=3743863619&f_TPR=\
-        r86400&geoId=104246759&keywords={job_search.replace(' ', '%20')}&location\
-        =%C3%8Ele-de-France%2C%20France&origin=JOB_SEARCH_PAGE_SEARCH_BUTTON&refresh=true"
+    # Region = Île-de-France
+    # Last 24 hours only          
+    url =  f"https://www.linkedin.com/jobs/search/?keywords={job_search.replace(' ', '%20')}\
+        &location=%C3%8Ele-de-France%2C%20France&locationId=&geoId=104246759&f_TPR=r86400&position=1&pageNum=0"
 
     # Selenium open browser and get the url
-    #driver = webdriver.Chrome(options=options)
     driver.get(url)
-
-    # You need to scroll to see all available jobs.
-    # Scroll down three times, it's enough to display all jobs
-    for i in range(3):
-        try:
-            main_scroll = driver.find_element(By.XPATH, '/html')
-            driver.execute_script("arguments[0].scrollTop = arguments[0].scrollHeight", main_scroll)
-            time.sleep(3)
-        except:
-            time.sleep(5)
-            try:
-                main_scroll = driver.find_element(By.XPATH, '/html')
-                driver.execute_script("arguments[0].scrollTop = arguments[0].scrollHeight", main_scroll)
-                time.sleep(3)
-            except:
-                pass
-
-    # The web page is ready for Beautifulsoup
     webpage = driver.page_source
     soup = BeautifulSoup(webpage, "html.parser")
-
-    # Each job is a list item
-    for i in soup.find('ul', {'class': 'jobs-search__results-list'}).find_all('li'):
-        html_element = i.find('h3', {'class': 'base-search-card__title'}).text.lower().strip()
-        job_name = i.find('h3').text.strip()
-        
-        # Sometimes the company is empty
-        try: 
-            company = i.select_one('.base-search-card__info h4.base-search-card__subtitle a.hidden-nested-link').text.strip()
-        except:
-            company = 'Not found'
-            
-        city = i.find('span', {'class': 'job-search-card__location'}).text.strip()
-        link = i.find('a', href=True)['href']
-        
-        # Adding scraped data to the instance        
-        scrap_data.job_append(
-            html_element,
-            job_name,
-            company,
-            city,
-            link)
-        
-    # Making the Dataframe
-    df = scrap_data.make_dataframe()
-    dataframes_list.append(df)
     
+    # If we have a jobs result list, we can 
+    jobs_count = False
+
+    try:
+        
+        # Trying to get a job result count
+        soup.find('h1', {'class':'results-context-header__context'}).\
+            find('span', {'class': 'results-context-header__job-count'}).text
+
+        jobs_count = True
+       
+    # If none, maybe Linkedin asked to login
+    except Exception as e:
+        print("Failed to have jobs results on first try :", e)
+        
+        # So, waiting and trying again
+        try:
+            for i in range(3):
+                time.sleep(10)
+                driver.get(url)
+                webpage = driver.page_source
+                soup = BeautifulSoup(webpage, "html.parser")
+                
+                if soup.find('h1', {'class':'results-context-header__context'})\
+                    .find('span', {'class': 'results-context-header__job-count'}).text:
+                        
+                    jobs_count = True
+                    break
+                
+                else:
+                    continue
+                
+        except Exception as e:
+            print("Failed to get jobs results on second try :", e)
+            jobs_count = False
+            
+    # Jobs count is not None, scrap can start
+    if jobs_count == True:
+                
+        # You need to scroll to see all available jobs.
+        # Scroll down three times, it's enough to display all jobs
+        for i in range(3):
+            
+            try:
+                main_scroll = driver.find_element(By.XPATH, '/html')
+                driver.execute_script(
+                    "arguments[0].scrollTop = arguments[0].scrollHeight", main_scroll
+                    )
+                time.sleep(3)
+                
+            except Exception as e:
+                print("Unable to scroll on page on first try :", e)
+                time.sleep(5)
+                
+                try:
+                    main_scroll = driver.find_element(By.XPATH, '/html')
+                    driver.execute_script(
+                        "arguments[0].scrollTop = arguments[0].scrollHeight", main_scroll
+                        )
+                    time.sleep(3)
+                    
+                except Exception as e:
+                    print("Unable to scroll on page on second try :", e)
+                    pass
+
+        # Each job is a list item
+        try:
+            
+            for i in soup.find('ul', {'class': 'jobs-search__results-list'}).find_all('li'):
+                html_element = i.find('h3', {'class': 'base-search-card__title'}).text.lower().strip()
+                job_name = i.find('h3').text.strip()
+                
+                # Sometimes the company is empty
+                try: 
+                    company = i.select_one('.base-search-card__info h4.base-search-card__subtitle a.hidden-nested-link').text.strip()
+                except:
+                    company = 'Not found'
+                    
+                city = i.find('span', {'class': 'job-search-card__location'}).text.strip()
+                link = i.find('a', href=True)['href']
+                
+                # Adding scraped data to the instance        
+                scrap_data.job_append(
+                    html_element,
+                    job_name,
+                    company,
+                    city,
+                    link)
+                
+        except Exception as e:
+            # The scrap failed for this job
+            print(f'Scrap failed for {job_search} :', e)
+            pass
+            
+        # Making the Dataframe
+        df = scrap_data.make_dataframe()
+        dataframes_list.append(df)
+    
+    else:
+        # No jobs results, going on next job search
+        continue
+    
+# Closing the driver
 driver.quit()
 
+# Creating dataframe to upload on S3
 final_df = pd.concat(dataframes_list)
 
 current_date_time = datetime.now()
@@ -206,6 +266,7 @@ file_name = f'jobs_scrap_{formatted_date_time}.csv'
 
 final_df.to_csv(file_name, index=False, encoding='utf-8')
 
+# AWS connection informations
 bucket_name = os.environ['BUCKET_NAME']
 s3_file = os.environ['FOLDER'] + file_name
 aws_access_key_id = os.environ['KEY_ID']
