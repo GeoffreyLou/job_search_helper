@@ -26,7 +26,7 @@ options.add_argument("--disable-blink-features=AutomationControlled")
 options.add_argument('--ignore-certificate-errors') # Avoid certificate errors
 options.add_argument('--ignore-ssl-errors') # Avoid SSL errors
 options.add_argument('--incognito') # Incognito mode for better results
-#options.add_argument('--headless') # The page will not show, better for Docker
+options.add_argument('--headless') # The page will not show, better for Docker
 options.add_argument('--disable-gpu') 
 options.add_argument('--lang=fr-FR')
 options.add_argument('--no-sandbox') # Important for Docker usage
