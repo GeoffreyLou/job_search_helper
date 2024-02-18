@@ -1,130 +1,32 @@
 from bs4 import BeautifulSoup
 from selenium import webdriver
-from selenium.webdriver.common.by import By
 from datetime import datetime
+from fake_useragent import UserAgent
+from functions import aws_bucket_upload, scroller
+from classes import JobsFinder, JobScraper
 import pandas as pd
-import boto3
 import time
 import os
 
 # All jobs to scrap
-jobs_list = [
+jobs_to_find = [
     'data analyst', 
     'data engineer', 
     'analytics engineer'
     ]
 
-
-class JobsFinder:
-    """
-    Class to scrap data from job offers and create a DataFrame.
-
-    Attributes:
-    - date (str): The date of the scrap.
-    - Week (int): The ISO week number of the scrap.
-    - job_search (str): The name of the job to search.
-    - jobs_dict (dict): An empty dictionary to store scraped data.
-    """
-
-    def __init__(self, job_search):
-        """
-        Initiate a new instance of JobsFinder.
-
-        Parameters:
-        - job_search (str): The name of the job to search.
-        """
-        date = datetime.now()
-        self.date_formatted = date.strftime("%Y-%m-%d")
-        self.week = date.isocalendar()[1]
-        self.job_search = job_search
-        self.jobs_dict = {
-            'Date': [],
-            'Week': [],
-            'Job search': [],
-            'Job name': [],
-            'Company': [],
-            'City': [],
-            'Link': []
-        }
-        
-    def job_append(self, html_element, job_name, company, city, link):
-        """
-        If the job to search is in the job title, then the data is 
-        added to the dictionary.
-
-        Parameters:
-        - html_element (str): HTML element of job title.
-        - job_name (str): Job title.
-        - company (str): Company name.
-        - city (str): City name.
-        - link (str): Link to the job offer.
-        """
-        
-        if self.job_search in html_element:
-            self.jobs_dict['Date'].append(self.date_formatted)
-            self.jobs_dict['Week'].append(self.week)
-            self.jobs_dict['Job search'].append(self.job_search)
-            self.jobs_dict['Job name'].append(job_name)
-            self.jobs_dict['Company'].append(company)
-            self.jobs_dict['City'].append(city)   
-            self.jobs_dict['Link'].append(link)                
-        
-    def make_dataframe(self):
-        """
-        Create and return a DataFrame with all the data for the job to search.
-
-        Returns:
-        - pd.DataFrame: The DataFrame with all the data.
-        """
-        
-        df_name = f'{self.job_search}_df'
-        df = pd.DataFrame(self.jobs_dict)
-        setattr(self, df_name, df)
-        return df
-    
-    
-def aws_bucket_upload(filename, 
-                      bucket_name,
-                      s3_file,
-                      aws_access_key_id, 
-                      aws_secret_access_key, 
-                      region):
-    """
-    Load Pandas DataFrame to a AWS S3 Bucket.
-
-    Parameters : 
-    - dataframe: Pandas DataFrame to upload.
-    - bucket_name: Name of the AWS S3 Bucket.
-    - s3_file: Name of the file after upload on S3 Bucket.
-    - aws_access_key_id: AWS access key.
-    - aws_secret_access_key: AWS secret access key.
-    - region: The region where the S3 bucket is.
-    """
-    
-    try: 
-        
-        s3 = boto3.client(
-            's3',
-            aws_access_key_id=aws_access_key_id,
-            aws_secret_access_key=aws_secret_access_key,
-            region_name=region
-            )
-        
-        s3.upload_file(
-            filename,
-            bucket_name,
-            s3_file
-            )
-        
-    except Exception as e:
-        print("Failed to upload file on S3 :", e)
-        
+# Generate a random user agent
+user_agent = UserAgent().random
 
 # Selenium options
 options = webdriver.ChromeOptions()
+options.add_argument(f'user-agent={user_agent}')  # Set the user agent
+options.add_argument("--window-size=1920,1080")
+options.add_argument("--disable-blink-features=AutomationControlled")
 options.add_argument('--ignore-certificate-errors') # Avoid certificate errors
+options.add_argument('--ignore-ssl-errors') # Avoid SSL errors
 options.add_argument('--incognito') # Incognito mode for better results
-options.add_argument('--headless') # The page will not show, better for Docker & virtual machines
+#options.add_argument('--headless') # The page will not show, better for Docker
 options.add_argument('--disable-gpu') 
 options.add_argument('--lang=fr-FR')
 options.add_argument('--no-sandbox') # Important for Docker usage
@@ -136,23 +38,24 @@ driver = webdriver.Chrome(options=options)
 # Empty list to store DataFrames
 dataframes_list = []
 
-for job_search in jobs_list:
+for job_search in jobs_to_find:
     
-    # Class instance
+    # Class instance creation
     scrap_data = JobsFinder(job_search)
 
     # Url to scrap
     # Region = Île-de-France
     # Last 24 hours only          
-    url =  f"https://www.linkedin.com/jobs/search/?keywords={job_search.replace(' ', '%20')}\
-        &location=%C3%8Ele-de-France%2C%20France&locationId=&geoId=104246759&f_TPR=r86400&position=1&pageNum=0"
+    url =  f"https://www.linkedin.com/jobs/search/?keywords=\
+        {job_search.replace(' ', '%20')}&location=%C3%8Ele-de-France%2C%20\
+        France&locationId=&geoId=104246759&f_TPR=r86400&position=1&pageNum=0"
 
     # Selenium open browser and get the url
     driver.get(url)
     webpage = driver.page_source
     soup = BeautifulSoup(webpage, "html.parser")
     
-    # If we have a jobs result list, we can 
+    # If we have a jobs result list, we can scrap
     jobs_count = False
 
     try:
@@ -167,21 +70,25 @@ for job_search in jobs_list:
     except Exception as e:
         print("Failed to have jobs results on first try :", e)
         
-        # So, waiting and trying again
+        # Then waiting and trying again three times
         try:
+            
             for i in range(3):
-                time.sleep(10)
+                time.sleep(15)
                 driver.get(url)
                 webpage = driver.page_source
                 soup = BeautifulSoup(webpage, "html.parser")
                 
+                # Trying again to get a job result count                
                 if soup.find('h1', {'class':'results-context-header__context'})\
                     .find('span', {'class': 'results-context-header__job-count'}).text:
                         
+                    # If yes, the loop end
                     jobs_count = True
                     break
                 
                 else:
+                    # Else, we try again
                     continue
                 
         except Exception as e:
@@ -189,52 +96,47 @@ for job_search in jobs_list:
             jobs_count = False
             
     # Jobs count is not None, scrap can start
-    if jobs_count == True:
+    if jobs_count:
                 
-        # You need to scroll to see all available jobs.
-        # Scroll down three times, it's enough to display all jobs
+        # You need to scroll down three times, it's enough to display all jobs
         for i in range(3):
             
             try:
-                main_scroll = driver.find_element(By.XPATH, '/html')
-                driver.execute_script(
-                    "arguments[0].scrollTop = arguments[0].scrollHeight", main_scroll
-                    )
-                time.sleep(3)
+                scroller(driver)
+                time.sleep(5)
                 
             except Exception as e:
                 print("Unable to scroll on page on first try :", e)
                 time.sleep(5)
                 
                 try:
-                    main_scroll = driver.find_element(By.XPATH, '/html')
-                    driver.execute_script(
-                        "arguments[0].scrollTop = arguments[0].scrollHeight", main_scroll
-                        )
-                    time.sleep(3)
+                    scroller(driver)
+                    time.sleep(5)
                     
                 except Exception as e:
                     print("Unable to scroll on page on second try :", e)
                     pass
 
+        jobs_list = soup.find(
+            'ul', 
+            {'class': 'jobs-search__results-list'}).find_all('li')
+
         # Each job is a list item
         try:
             
-            for i in soup.find('ul', {'class': 'jobs-search__results-list'}).find_all('li'):
-                html_element = i.find('h3', {'class': 'base-search-card__title'}).text.lower().strip()
-                job_name = i.find('h3').text.strip()
+            for job in jobs_list:
                 
-                # Sometimes the company is empty
-                try: 
-                    company = i.select_one('.base-search-card__info h4.base-search-card__subtitle a.hidden-nested-link')\
-                        .text.strip()
-                except:
-                    company = 'Not found'
-                    
-                city = i.find('span', {'class': 'job-search-card__location'}).text.strip()
-                link = i.find('a', href=True)['href']
+                #  JobScraper class instance creation
+                job_element = JobScraper(job)
                 
-                # Adding scraped data to the instance        
+                # Get elements from instance
+                html_element = job_element.get_html_element()
+                job_name = job_element.get_job_name()
+                company = job_element.get_company_name()
+                city = job_element.get_city()
+                link = job_element.get_link()
+                
+                # Adding scraped data to the JobsFinder instance
                 scrap_data.job_append(
                     html_element,
                     job_name,
@@ -253,6 +155,7 @@ for job_search in jobs_list:
     
     else:
         # No jobs results, going on next job search
+        time.sleep(15)
         continue
     
 # Closing the driver
@@ -261,10 +164,12 @@ driver.quit()
 # Creating dataframe to upload on S3
 final_df = pd.concat(dataframes_list)
 
+# Creating the dataframe filename
 current_date_time = datetime.now()
 formatted_date_time = current_date_time.strftime("%Y-%m-%d-%H-%M")
 file_name = f'jobs_scrap_{formatted_date_time}.csv'
 
+# Créating the final DataFrame
 final_df.to_csv(file_name, index=False, encoding='utf-8')
 
 # AWS connection informations
@@ -274,6 +179,7 @@ aws_access_key_id = os.environ['KEY_ID']
 aws_secret_access_key = os.environ['SECRET_KEY']
 region = os.environ['REGION']
 
+# Upload to S3 Bucket
 aws_bucket_upload(
     file_name, 
     bucket_name,
@@ -282,4 +188,5 @@ aws_bucket_upload(
     aws_secret_access_key, 
     region)
 
+# Removing the file
 os.remove(file_name)
