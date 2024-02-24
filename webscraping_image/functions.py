@@ -35,7 +35,7 @@ def aws_bucket_upload(filename,
             )
         
     except Exception as e:
-        print("Failed to upload file on S3 :", e)
+        print(f"Failed to upload file on S3 : {e}")
         
         
 def scroller(driver):

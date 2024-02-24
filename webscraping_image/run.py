@@ -71,7 +71,7 @@ if __name__ == '__main__':
         
         # If none, maybe Linkedin asked to login
         except Exception as e:
-            print("Failed to have jobs results on first try :", e)
+            print(f"Failed to have jobs results on first try : {e}")
             
             # Then waiting and trying again three times
             try:
@@ -95,7 +95,7 @@ if __name__ == '__main__':
                         continue
                     
             except Exception as e:
-                print("Failed to get jobs results on second try :", e)
+                print(f"Failed to get jobs results on second try : {e}")
                 jobs_count = False
                 
         # Jobs count is not None, scrap can start
@@ -109,7 +109,7 @@ if __name__ == '__main__':
                     time.sleep(5)
                     
                 except Exception as e:
-                    print("Unable to scroll on page on first try :", e)
+                    print(f"Unable to scroll on page on first try : {e}")
                     time.sleep(5)
                     
                     try:
@@ -117,7 +117,7 @@ if __name__ == '__main__':
                         time.sleep(5)
                         
                     except Exception as e:
-                        print("Unable to scroll on page on second try :", e)
+                        print(f"Unable to scroll on page on second try : {e}")
                         pass
 
             jobs_list = soup.find(
@@ -133,15 +133,16 @@ if __name__ == '__main__':
                     job_element = JobScraper(job)
                     
                     # Get elements from instance
-                    html_element = job_element.get_html_element()
+                    lower_job_name = job_element.get_lower_job_name()
                     job_name = job_element.get_job_name()
                     company = job_element.get_company_name()
                     city = job_element.get_city()
                     link = job_element.get_link()
                     
-                    # Adding scraped data to the JobsFinder instance
+                    # Adding scraped data to the DataFrameMaker instance
+                    # The method will check if the data must be added
                     scrap_data.job_append(
-                        html_element,
+                        lower_job_name,
                         job_name,
                         company,
                         city,
@@ -149,7 +150,7 @@ if __name__ == '__main__':
                     
             except Exception as e:
                 # The scrap failed for this job
-                print(f'Scrap failed for {job_search} :', e)
+                print(f'Scrap failed for {job_search} : {e}')
                 pass
                 
             # Making the Dataframe
