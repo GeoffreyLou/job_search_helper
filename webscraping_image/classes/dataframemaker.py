@@ -66,4 +66,5 @@ class DataFrameMaker:
         df_name = f'{self.job_search}_df'
         df = pd.DataFrame(self.jobs_dict)
         setattr(self, df_name, df)
+        
         return df

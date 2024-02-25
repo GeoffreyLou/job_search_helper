@@ -2,9 +2,10 @@ from bs4 import BeautifulSoup
 from selenium import webdriver
 from datetime import datetime
 from fake_useragent import UserAgent
-from functions import aws_bucket_upload, scroller
-from dataframemaker import DataFrameMaker
-from jobscraper import JobScraper
+from functions.uploader import aws_bucket_upload
+from functions.scroller import scroller
+from classes.dataframemaker import DataFrameMaker
+from classes.jobscraper import JobScraper
 import pandas as pd
 import time
 import os

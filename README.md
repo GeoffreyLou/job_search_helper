@@ -9,4 +9,4 @@ This project is a refactoring of the datastats project :
 - improved performance
 - improved monthly cost
 
-This documentation is under construction. cd 
+This documentation is under construction. 
